@@ -1,0 +1,5 @@
+# Files to ignore when copying project into container
+README.md
+.git
+*.md
+
