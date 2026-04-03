@@ -6,7 +6,7 @@ A containerized web service built with Nginx and Docker, served over HTTPS using
 
 ## How to Run Locally
 
-### Prerequisites
+### Ensure that:
 - Docker Desktop installed on your machine
 
 ### Steps
@@ -53,39 +53,36 @@ docker compose logs -f
 
 ## What I Would Improve With More Time
 
-- Replace the self-signed certificate with a trusted certificate from Let's Encrypt to eliminate the browser security warning
-- Add a CI/CD pipeline using GitHub Actions to automatically build and test the Docker image on every push
-- Replace Nginx access logs with structured JSON logging to make logs easier to parse and ship to a centralized monitoring service like AWS CloudWatch or Datadog
-- Run Nginx as a non-root user inside the container for better security
-- Add a health check endpoint so Docker knows when the service is truly ready before accepting traffic
-- Use Docker Compose volumes to mount certificates at runtime, allowing certificate rotation without rebuilding the image
+- Replace the self-signed certificate with a trusted certificate from Let's Encrypt for a production-grade HTTPS setup that eliminates the browser security warning
+- Introduce resource limits in the Compose file to cap CPU and memory usage, preventing the container from consuming too much of the host machine's resources
+- Add a Terraform script to automate the provisioning of the AWS infrastructure mentioned above, making cloud deployment repeatable and version controlled
+- Harden the container by running Nginx as a non-root user and adding a read-only filesystem where possible to reduce the attack surface
+- Set up automated image vulnerability scanning using a tool like Trivy or Snyk to catch security issues in the base image before deployment
 
 ---
 
 ## How I Would Deploy This to AWS
 
-1. **Amazon ECR** — Push the Docker image to Elastic Container Registry, AWS's service for storing Docker images
-2. **Amazon ECS with Fargate** — Deploy the container using Fargate, which runs containers serverlessly without needing to manage any servers
-3. **Application Load Balancer** — Place a load balancer in front of the container to handle incoming traffic and HTTPS termination, replacing the need for Nginx to manage certificates directly
-4. **AWS Certificate Manager** — Use ACM to provision a free, trusted, auto-renewing SSL certificate and attach it to the load balancer
-5. **Route 53** — Point a domain name at the load balancer
+The local setup maps directly to a standard AWS architecture:
 
-The result mirrors this local setup exactly: traffic hits the load balancer (TLS termination) → container (plain HTTP internally).
+- Store the Docker image in **ECR**
+- Run it using **ECS Fargate** — no servers to manage
+- Put an **Application Load Balancer** in front to handle all incoming traffic
+- Attach an **ACM certificate** to the load balancer for trusted HTTPS — at this point Nginx no longer needs to handle TLS at all
+- Use **Route 53** to connect a domain to the load balancer
+
+The biggest difference from local: TLS moves from Nginx to the load balancer, which is how it works in every real production environment.
+
+In a previous project I built a static website deployment pipeline using S3, CloudFront, and GitHub Actions. That architecture served content globally through CloudFront with OAC controlling private S3 access. This project takes a different approach — rather than serving static files directly from S3, the content is containerized and served through Nginx, which makes it more portable and closer to how real application backends are deployed. The CI/CD and IAM patterns from that project would carry over directly here, with GitHub Actions building and pushing the Docker image to ECR on every commit instead of syncing files to S3.
 
 ---
 
 ## Why Storing a Private SSL Key in a Repository is Bad Practice
 
-Anyone who possesses the private key can impersonate your server and decrypt traffic that was meant to be private. Once committed to Git it is compromised forever because:
-
-- **Git history is permanent** — deleting the file does not remove it from past commits
-- **Public repos are indexed** by search engines and secret scanning tools
-- **Anyone who has cloned the repo** retains a local copy of the key
-
-In production, private keys should be stored in a secrets manager such as AWS Secrets Manager or HashiCorp Vault and never committed to source control. In this project the certificate is generated automatically inside Docker during the build process, so no private key ever touches the repository.
+Committing a private key to a repository is essentially making it public. Git history is permanent, meaning even if the file is removed in a later commit it can still be retrieved from previous ones. Beyond that, public repositories are continuously scanned by automated tools and bad actors specifically looking for exposed keys, and any clone of the repo carries a copy of the key with it. The safest approach in production is to keep private keys out of source control entirely and store them in a dedicated secrets manager like AWS Secrets Manager or HashiCorp Vault. This project sidesteps the issue by generating the certificate directly inside Docker at build time, meaning the private key only ever exists within the container and never touches the repository.
 
 ---
 
 ## AI Tools Used
 
-- **Claude (Anthropic)** — To review code
+- **Claude (Anthropic)** — To review code and improve wording
